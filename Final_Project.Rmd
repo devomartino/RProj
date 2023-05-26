@@ -1,0 +1,700 @@
+---
+Prolog
+###########################################
+
+Project:Final Project
+
+Purpose: The purpose of this study is to find the predictive accuracy of machine learning algorithms in predicting the occurrence of heart failure using the Heart Failure Prediction Dataset, and which features are most informative in improving the performance of these algorithms.
+
+Authors: Ellis-martin, McCoo, Moslehikhah, Neal, Young
+
+Edit date: 5/8/2023
+
+data used: heart.csv
+
+###########################################
+
+---
+
+################################################
+Attribute Information:
+
+-Age: age of the patient (years)
+
+-Sex: sex of the patient (M: Male, F: Female)
+
+-ChestPainType: chest pain type (TA: Typical Angina, ATA: Atypical Angina,                 NAP: Non-Anginal Pain, ASY: Asymptomatic)
+
+-RestingBP: Resting blood pressure (mm Hg)
+
+-Cholesterol: serum cholesterol (mm/dl)
+
+-FastingBS: fasting blood sugar (1: if FastingBS > 120 mg/dl, 0: otherwise)
+
+-RestingECG: resting electrocardiogram results (Normal: Normal, ST: having ST-T wave abnormality (T wave inversions and/or ST elevation               or depression of > 0.05 mV), LVH: showing probable or definite left ventricular hypertrophy by Estes' criteria)
+
+-MaxHR: maximum heart rate achieved (Numeric value between 60 and 202)
+
+-ExerciseAngina: exercise-induced angina (Y: Yes, N: No)
+
+-Oldpeak: oldpeak = ST (Numeric value measured in depression)
+
+-ST_Slope: the slope of the peak exercise ST segment (Up: upsloping, Flat:            flat, Down: downsloping)
+
+-HeartDisease: output class (1: heart disease, 0: Normal)
+
+
+```{r}
+packages <- c('tidyverse','haven','descr','fmsb','lsr','gridExtra','ggplot2', 'dunn.test','dplyr','qualvar', 'labelled')
+purrr::walk(packages,library,character.only=T)
+
+```
+
+Import the data
+
+```{r}
+# import the heart data
+heart <- read_csv(file = "heart.csv")
+```
+
+#######################
+Data Cleaning
+#######################
+
+```{r}
+# check for missing values
+any(is.na(heart))
+```
+#Note: There are no missing values
+
+
+```{r}
+# select variables of interest and clean them
+
+heart.cleaned <- heart %>%
+    select(Sex, ChestPainType, RestingECG, MaxHR, HeartDisease, Age) %>%
+    zap_labels() %>% #to remove super long labels
+    mutate(HeartDisease = recode_factor(.x = HeartDisease,
+                    `1` = 'heart disease',
+                    `0` = 'Normal')) %>%
+    mutate(Sex = recode_factor(.x = Sex,
+                               `M` = 'Male',
+                               `F` = 'Female')) %>%
+    mutate(ChestPainType = recode_factor(.x = ChestPainType,
+                                         `TA` = 'Typical Angina',
+                                         `ATA` = 'Atypical Angina',
+                                         `NAP` = 'Non-Anginal Pain',
+                                         `ASY` = 'Asymptomatic')) %>%
+    mutate(RestingECG = recode_factor(.x = RestingECG,
+                                      `normal` = "Normal",
+                                      `ST` = "ST",
+                                      `LVH` = "LVH"))
+```
+
+
+```{r}
+# check recording
+summary(object = heart.cleaned)
+```
+```{r}
+# dimension of the cleaned data
+dim(heart.cleaned)
+```
+```{r}
+#data type of each column
+sapply(heart.cleaned, class)
+```
+
+
+
+
+#######################
+Data Visualization 
+#######################
+
+
+```{r}
+# Histogram of maximum heart rate
+heart.cleaned %>%
+  ggplot(aes(x = MaxHR, fill = factor(HeartDisease))) +
+  geom_histogram(bins = 30) +
+  scale_fill_manual(values = c("#e41a1c", "#377eb8"))
+```
+
+Interpretation of the graph:
+
+From the histogram  we can see lower maximum heart rate achieved is more associated with heart disease
+
+
+
+```{r}
+# Histogram of maximum heart rate with hue of chest Pain types
+heart.cleaned %>%
+  ggplot(aes(x = MaxHR, fill = factor(ChestPainType))) +
+  geom_histogram(bins = 30) +
+  scale_fill_manual(values = c("#e41a1c", "#377eb8",'#1ce41a','#e4e21a'))
+```
+Interpretation of the graph:
+
+chest pain type of Asymptomatic is most common
+
+
+```{r}
+#count plot of HeartDisease
+ggplot(heart.cleaned, aes(x = HeartDisease, fill = HeartDisease)) +
+  geom_bar() +
+  scale_fill_manual(values = c("#e41a1c",'#1ce41a')) +
+  labs(title = "Count Plot", x = "Heart Disease", y = "Frequency") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, size = 18, face = "bold"),
+        axis.title = element_text(size = 16, face = "bold"),
+        axis.text = element_text(size = 14),
+        axis.line = element_line(color = "black"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank())
+```
+
+Interpretation of the graph:
+
+From the count plot we can see the frequency of people with heart disease is a little more in our data
+
+
+
+```{r}
+#count plot of Sex
+ggplot(heart.cleaned, aes(x = Sex, fill = HeartDisease)) +
+  geom_bar() +
+  scale_fill_manual(values = c("#e41a1c",'#1ce41a')) +
+  labs(title = "Count Plot", x = "Sex", y = "Frequency") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, size = 18, face = "bold"),
+        axis.title = element_text(size = 16, face = "bold"),
+        axis.text = element_text(size = 14),
+        axis.line = element_line(color = "black"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank())
+```
+Interpretation of the graph:
+
+* Data contains more men than female.
+* Number of female with normal heart condition is higher than female   with heart disease.
+* Number of male with normal heart condition is less than male with    heart disease.
+
+
+```{r}
+#count plot of chest pain types
+ggplot(heart.cleaned, aes(x = ChestPainType, fill = HeartDisease)) +
+  geom_bar() +
+  scale_fill_manual(values = c("#e41a1c",'#1ce41a')) +
+  labs(title = "Count Plot", x = "Sex", y = "Frequency") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, size = 18, face = "bold"),
+        axis.title = element_text(size = 16, face = "bold"),
+        axis.text = element_text(size = 14),
+        axis.line = element_line(color = "black"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank())
+```
+
+
+Interpretation of the graph:
+
+* people with asymptomatic(ASY) chest pain are more likely to have heart disease
+
+* people with atypical angina(ATA) chest pain are  more likely to have normal heart condition 
+
+* people with Non-Anginal Pain(NAP) are  more likely to have normal heart condition 
+
+* people with Typical Angina(TA) have same proportion of heart disease and normal heart condition 
+
+
+
+```{r}
+#count plot of RestingECG(resting electrocardiogram results)
+ggplot(heart.cleaned, aes(x = RestingECG, fill = HeartDisease)) +
+  geom_bar() +
+  scale_fill_manual(values = c("#e41a1c",'#1ce41a')) +
+  labs(title = "Count Plot", x = "Sex", y = "Frequency") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, size = 18, face = "bold"),
+        axis.title = element_text(size = 16, face = "bold"),
+        axis.text = element_text(size = 14),
+        axis.line = element_line(color = "black"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank())
+```
+
+Interpretation of the graph:
+
+* Most of the people in our data have normal resting electrocardiogram results
+
+* People with LHV and ST resting electrocardiogram results are more likely to have heart disease in our data
+
+
+
+
+```{r}
+# boxplot  
+ggplot(heart.cleaned, aes(x = factor(HeartDisease), y = MaxHR, fill = factor(HeartDisease))) +
+  geom_boxplot(color = "black", size = 0.5) +
+  scale_fill_manual(values = c("#e41a1c",'#1ce41a')) +
+  labs(title = "Max Heart Rate by Heart Disease", x = "Heart Disease", y = "Max Heart Rate") +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(), 
+        panel.border = element_blank(),
+        axis.line = element_line(colour = "black"))
+```
+Interpretation of the graph:
+
+* distribution of maximum heart rates for patients with and without heart disease.
+
+* The median value for patients without heart disease is  higher than for patients with heart disease.
+
+```{r}
+#histogram with age and heart disease
+ggplot(heart.cleaned, aes(x = Age, fill = HeartDisease)) +
+  geom_histogram(binwidth = 5, alpha = 0.8, position = "identity") +
+  scale_fill_manual(values = c("#e41a1c",'#1ce41a')) +
+  labs(title = "Histogram of Age by Heart Disease Status",
+       x = "Age", y = "Count")
+```
+Interpretation:
+  The higher the age of the participant the more likely they are to have heart disease.
+
+#########
+Descriptive statistics
+#########
+```{r}
+summary(heart.cleaned)
+```
+```{r}
+summary(heart.cleaned$Sex)
+```
+```{r}
+Hmisc::describe(heart.cleaned[, c("Sex", "ChestPainType", "RestingECG", "MaxHR", "HeartDisease","Age")])
+```
+```{r}
+summary(heart.cleaned$MaxHR)
+```
+```{r}
+q1 <- quantile(heart.cleaned$MaxHR, 0.25)
+q3 <- quantile(heart.cleaned$MaxHR, 0.75)
+
+# Calculate the IQR of MaxHR
+iqr <- q3 - q1
+
+# Print the IQR of MaxHR
+iqr
+```
+```{r}
+q1 <- quantile(heart.cleaned$Age, 0.25)
+q3 <- quantile(heart.cleaned$Age, 0.75)
+
+# Calculate the IQR of Age
+iqr <- q3 - q1
+
+# Print the IQR of Age
+iqr
+```
+
+
+#########
+Chi-squared
+#########
+CHI-SQUARED- test of independence
+
+Using NHST process to test whether there is a relationship between HeartDisease and RestingECG
+
+Step 1- writing the null and alternative hypotheses for HeartDisease and RestingECG
+  H0 = There is no relationship betweeen HeartDisease and RestingECG
+  HA = There is a relatinship between HeartDisease and RestingECG
+  
+Step 2- compute the test statistic  
+
+```{r}
+#chi-squared statistic for heart disease and RestingECG
+chisq.test(x = heart.cleaned$HeartDisease,
+           y = heart.cleaned$RestingECG)
+```
+Step #3- Calculate that the probability that your test statistic is at least as big as it is if there is no relationship (the null is true).
+
+The test statistic is x2= 10.931. The probability of seeing chi-squared as big as 10.931 in our sample if there were no relationship between HeartDisease and RestingECG would be 0.004229 or p < .05.
+
+Step #4- If the probability that the null is true is very small (less than 5%), reject the null hypothesis
+
+The probability that the null is true in the sample is 0.004229 or p < .05. This is a very small chance of being true, therefore, the null hypothesis is unlikely and should be rejected.
+
+Step #5- If the probability that the null is true is not small, or greater than 5%, retain the null hypothesis.
+
+This step does not apply to our sample as the null hypothesis was rejected. There is a statistically significant relationship between HeartDisease and RestingECG [x2(2) = 10.931; p < .05].
+
+
+Standardized Residuals
+
+```{r}
+#chi-squared examining HeartDisease and RestingECG
+CrossTable(x = heart.cleaned$HeartDisease,
+           y = heart.cleaned$RestingECG,
+           expected = TRUE,
+           prop.c = FALSE,
+           prop.t = FALSE,
+           prop.chisq = FALSE,
+           chisq = TRUE,
+           sresid = TRUE)
+```
+Values of the standardized residuals that are higher than 1.96 or lower than –1.96 indicate that the observed value in that group is much higher or lower than the expected value. 
+
+Based on the standardized residuals, the only value for RestingECG driving the chi-squared results are that the observed values of -2.075 in the ST category for Normal is slightly lower than expected. None of the groups had more or fewer than expected observations in any category.
+
+
+Effect size with Cramer's V
+
+```{r}
+#computing Cramer's V statistic
+cramersV(x= heart.cleaned$HeartDisease,
+         y = heart.cleaned$RestingECG)
+```
+
+Cramer's V interpretation is as follows:
+-small or weak effect size for V = .1
+-medium of moderate effect size for V = .3
+-large or strong effect size for V = .5
+
+Cramer's V efffect size for our sample is .11, which means the effect size is small or weak.There is a statistically significant relationship between HeartDisease and RestingECG and the relationship is small to weak.
+
+Checking Chi-squared assumptions:
+
+The 3 assumptions for chi-squared are...
+1- variables must be nominal or ordinal
+2- expected values of 5 or greater in 80% of groups
+3- independent observations assumption
+
+Assumption #1 was met as values were categorical and nominal. 
+Assumption #2 was met as values were greater than 5 in the groups
+Assumption #3 was met as the Heart Data Prediction Set is considered independent as it was pulled from 5 different are across the world.
+
+
+########
+ANOVA
+########
+
+```{r}
+#creating a boxplot to show maximum heart rate by sex
+heart.cleaned %>%
+  ggplot(aes(y = MaxHR, x = Sex))+
+  geom_boxplot(aes(fill = Sex), alpha = .5)+
+  scale_fill_manual(values = c("#e41a1c", "#1ce41a"))+
+  theme_minimal()+
+  labs(title = "Boxplot of Max HR vs Sex",
+       x = "Sex",
+       y = "Maximum Heart Rate")
+```
+Interpretation:
+The maximum heart rate appears to be slightly higher in females than in males.
+
+```{r}
+#creating a boxplot to show the relationship between the mean max heart rate by chest pain type, differentiated by sex
+heart.cleaned %>%
+  ggplot(aes(y = MaxHR, x = ChestPainType)) +
+  geom_boxplot(aes(fill = Sex), alpha = .5) +
+  scale_fill_manual(values = c("#e41a1c","#1ce41a"))+
+  theme_minimal()+
+  labs(title = "Boxplot of Max HR vs Chest Pain Type, grouped by Sex",
+       x = "Chest Pain Type",
+       y = "Maximum Heart Rate")
+
+```
+Interpretation:
+The most significant difference is in the mean maximum heart rate between males and females in the asymptomatic category, and to a lesser extent in the non-anginal pain category.
+The mean heart rate for the typical angina and atypical angina appear to be very similar between males and females.
+
+```{r}
+#Creating a line graph to show the relationship between maxHR and chest pain type by sex
+heart.cleaned %>%
+  ggplot(aes(y = MaxHR, x = ChestPainType, color = Sex)) +
+      stat_summary(fun.y = mean, geom="point", size = 3) +
+      stat_summary(fun.y = mean, geom="line", aes(group = Sex), size = 1) +
+scale_color_manual(values = c("#e41a1c", "#1ce41a")) +
+theme_minimal() +
+labs(title = "Line Graph of Max HR vs Chest Pain Type, grouped by Sex",
+     x = "Chest Pain Type",
+     y = "Maximum Heart Rate") +
+ylim(100, 200)
+```
+Interpretation:
+Max heart rate for males appears to be the lowest and have the greatest difference from females in the asymptomatic group.
+Female max heart rate in the asymptomatic group is also lower than for other groups.
+Typical angina and atypical angina groups appear to have almost the same max heart rate values for males and females.
+
+```{r}
+maxHR.pain.sex <- heart.cleaned %>%
+  group_by(ChestPainType, Sex) %>%
+  summarize(m.MaxHR = mean(MaxHR),
+            sd.MaxHR = sd(MaxHR))
+
+maxHR.pain.sex
+```
+
+
+Interpretation:
+The largest difference is between males and females in the asymptomatic group; males have a mean max heart rate of 139.13 while females have a mean max heart rate of 126.73.
+The smallest difference is between males and females in the typical angina group
+
+NHST Step 1: 
+H0 = Maximum heart rate is the same across all groups of chest pain type and sex.
+HA = Maximum heart rate is not the same across all groups of chest pain type and sex.
+
+```{r}
+#NHST Step 2:
+#Computing the test statistic for an ANOVA between maxHR, chest pain type, and sex
+pain.sex.aov <- aov(formula = MaxHR ~ ChestPainType * Sex,
+                    data = heart.cleaned)
+
+summary(object = pain.sex.aov)
+```
+NHST Step 3: p > 0.05
+NHST Steps 4 &5:
+There is no statistical significance between maximum heart rate and chest pain type when grouped by sex [F(3,3068)= 1.85; p > 0.01]. There is however statistical significance between maximum heart rate and both chest pain type [F(3, 79522) = 47.94; p < 0.01] and sex [F(1,8707) = 15.75, p< 0.01]. The null hypothesis that there is no difference across groups is retained. Since the results were not statistically significant, the Tukey's Honestly Significant Difference post hoc test will not be used.
+
+Assumptions:
+* Continuous variable and independent groups
+The assumptions of a continuous variable and independent groups are both met for this test. The variable maxHR is continuous, and the dataset is comprised of smaller data sets from different countries.
+
+* Independent observations
+This assumption is met as there is no indication that the data was taken from people with any relation to one another. The repeated observations were removed from the dataset.
+
+* Normal distribution in each group
+```{r}
+#Shapiro-Wilk test to determine normality of residuals
+shapiro.test(x = pain.sex.aov$residuals)
+
+#graphing to confirm residuals
+pain.sex.aov %>%
+  ggplot(aes(x = pain.sex.aov$residuals))+
+  geom_histogram(fill = "#7463AC", col = "white") +
+  theme_minimal()+
+  labs(title = "Distribution of Residuals", x = "Residuals", y = "number of observations")
+```
+The null hypothesis for the Shapiro Wilk test is that the residuals are normal. Since p < 0.05 for this test, the null hypothesis is rejected and the normality assumption is not met.
+The graph shows that the residuals are not normally distributed as there are several peaks in the histogram.
+
+* Equal variances for each group
+```{r}
+#Perform the Levene test to determine if the equal variances assumption is met
+car::leveneTest(y = MaxHR ~ ChestPainType*Sex, center = mean, data = heart.cleaned)
+```
+The result of the Levene test were not statistically significant (p > 0.05), so the assumption of equal variances is met.
+
+```{r}
+#Since the normality assumption failed, a Friedman test is necessary
+friedman.summary <- heart.cleaned %>%
+  drop_na(MaxHR)%>%
+  group_by(ChestPainType, Sex)%>%
+  summarize(m.MaxHR = mean(x = MaxHR))
+
+friedman.pain.sex <- friedman.test(formula = m.MaxHR ~ ChestPainType|Sex,
+                                   data = friedman.summary)
+friedman.pain.sex
+```
+Interpretation:
+The Friedman test still did not result in a statistically significant outcome [X^2(3) = 5.4, p = 0.14]. While there may be differences in max heart rate between chest pain groups and sex groups individually, those variables do not appear to interact together to affect maximum heart rate for this dataset.
+
+########
+Logistical Regression
+########
+
+For the next section, we want to look at how different independent variables, like whether they have abnormalities in a resting ECG (RestingECG), or the type of chest pain they exhibit (ChestPainType).
+
+Since we are dealing with a binary outcome and are interested in how the categorical variables affect it, we will be applying a logistical regression. A logistical regression was chosen over a linear due to linear regressions requiring a continuous variable.
+
+First, we will do some exploratory analysis on our variables of interest.
+
+### Exploratory Analysis ###
+
+First, we will use summary.factor to examine the categorical variables of interest for the regression, and their respective counts.
+
+```{r}
+summary.factor(heart.cleaned$ChestPainType)
+summary.factor(heart.cleaned$RestingECG)
+summary.factor(heart.cleaned$HeartDisease)
+```
+Above is a count of our variables of interest and corresponding values. 
+
+We will now create a table showing counts, again and percentages they make up of our data, using CreateTableOne().
+
+```{r}
+library(package = tableone)
+heart.regress.var.tab <- CreateTableOne(data = heart.cleaned,
+                                        vars = c('ChestPainType', 'RestingECG', 'HeartDisease'))
+heart.regress.var.tab
+```
+Interpretation:
+
+We see that in types of chest pain, most are asymptomatic and do not exhibit symptoms (54.0%). The second most common pain was non-angina pain (22.1%). This is to say that these individuals experience pain in their chest that is not related to their heart.
+
+Next in our data, we find that the majority of individuals appear normal on their ECG (60.1%). We, also, find that about two out of five individuals (39.9%) in the study do exhibit abnormalities, being either hypertrophy of the left ventricle (LVH) or an abnormality of their S-T wave, on their ECG. This will be something of interest to keep in mind as we move forward with the regression. 
+
+Lastly, we find a count of individuals with heart disease (55.3%) and those without it (44.7%).
+
+Now that we have examined and analyzed the data, we will move on to executing our logistical model.
+
+### NHST Steps ### 
+
+# NHST Step 1: Writing H0 and HA:
+
+The first step of our NHST is to write out our null and alternative hypothesis. We saw that 44.7% of individuals are normal for heart disease within our data frame. That is to say, they do not have heart disease. So, we can infer that it is more likely (55.3%) for an individual in this data frame to have heart disease. 
+
+The above will become our baseline value. We will be testing whether our model is better at predicting heart disease, or just the same as our baseline. Thus, we can declare our null hypothesis (H0) and alternative hypothesis (HA) as:
+
+H0: A model containing chest pain type, and resting ECG information is no better than the baseline at explaining heart disease.
+HA: A model containing chest pain type, and resting ECG information is better than the baseline at explaining heart disease.
+
+# NHST Step 2: Computing Test Statistic:
+
+To compute our test statistic in our logistic model we will use the function generalized linear model, glm(). This model will take many arguments, including a reference group that will be determined by categories in the outcome variable. The function treats the first category as a reference group, or the group that is negative of the outcome. The second group is the group positive for the outcome.
+
+With our outcome variable of interest being individuals positive for heart disease (HeartDisease), we can check the levels, or different ways individuals were categorized as regarding heart disease, using levels(). We will also check and change, if needed, the levels of our variable reference groups, so that the reference are for normal conditions.
+
+```{r}
+levels(x = heart.cleaned$HeartDisease)
+```
+
+Now that we know the categories of our binary dependent variable, we know that our reference group should be 'Normal', or , 'Normal' should be our first category and not the second. So, before we can create the model we must reorder the categories using mutate() and relevel().
+
+```{r}
+heart.glm.data <- heart.cleaned %>%
+  mutate(HeartDisease = relevel(x = HeartDisease, ref = 'Normal')) %>%
+  mutate(RestingECG = relevel(x = factor(RestingECG), ref = 'Normal'))
+
+levels(heart.glm.data$HeartDisease)
+levels(factor(heart.glm.data$ChestPainType))
+levels(factor(heart.glm.data$RestingECG))
+
+```
+
+Now, "Normal" is the first category within our variable, allowing for our function to be able to use it as the reference group, regarding heart disease. For our other two variables of interest, asymptomatic and  The re-leveled data frame has been reassigned to heart.glm.
+
+Next, we can create our first logistical regression model. We will be using a larger model consisting of both our independent variables ChestPainType, and RestingECG, with our dependent binary HeartDisease, using glm().
+
+```{r}
+heart.glm <- glm(formula = HeartDisease ~ ChestPainType + RestingECG,
+                      data = heart.glm.data,
+                      family = binomial('logit'),
+                      na.action = na.exclude)
+summary(object = heart.glm)
+```
+Before full interpretation of output is done we will first need to find our odds ratio. This will give us the difference between our null and residual deviance, and chi-squared. This will be done using odds.n.ends() from the odds.n.ends package. We will first have to install and load the package.
+
+```{r}
+install.packages('odds.n.ends')
+library(package = 'odds.n.ends')
+```
+
+odds.n.ends() function has now been installed, and loaded. We can now apply our function to our model.
+
+```{r}
+heart.OnE <- odds.n.ends(mod = heart.glm,
+            thresh = 0.5)
+
+heart.OnE
+```
+We find that our model of n = 918 and df = 5, has a chi-squared of 291.5 and p-value of < 0.001. The model shows a sensitivity, or percentage of positive heart disease values that the model predicted correctly as 80%, and a specificity, or negative heart disease values the model predicted correctly as almost 74%. Our odds and ends output, also, shows a percent correctly predicted, or count R-squared, of 76%. This is to say, the model predicts a correct outcome of an individual for heart disease with 76% accuracy. 
+
+To show the probability of the null hypothesis being true, we will now graph what this chi-squared curve looks like, and the probability of the null being true. This will give us a better understanding of why the p-value is so low.
+
+# NHST Step 3: Caculating Probabiiity of Null Being True:
+
+By using curve(), and specifying dchisq(), we will create our density curve.
+
+```{r}
+curve(dchisq(x, df = 5), n = 918, from = 0, to = 300, xlab = 'Chi-Squared Statistic', ylab = 'Probability Density')
+```
+The area under the curve past 291.5 is the probability of our null hypothesis being true, which we can see is very, very small. Once again, this correlates with our small p-value seen from our odds and ends model.
+
+# NHST Steps 4 and 5: Interpretting Probability and Conclusion:
+
+Interpretation: 
+
+The above stated and visualized chi-squared test statistic, 291.5, for our logistical regression model consisting of chest pain type to predict the outcome of heart disease had a p-value of less than .1%, or p < 0.001. Thus, there is less than a .1% chance that a chi-squared statistic this large, or more, existing if the null hypothesis were true. Therefore, the null hypothesis is rejected for the alternative hypothesis that a model containing chest pain type, and resting ECG information is better than the baseline at explaining heart disease. This logistical regression model was statistically significantly better than the null model for predicting heart disease (X^2(5) = 291.5; p < .001).
+
+We will now move to interpreting the odds ratios. Odds ratios gives us a comparison for how much of x is seen versus y. In other words, in a 95% confidence interval, which shows the true or population value of the odds ratio (OR) is 1, it indicates that the value of the outcome could be 1. If the OR is higher it shows an increase, and lower shows a decrease. For our variables of interest, ChestPainTypeATA (Atypical Angina), ChestPainTypeNAP (Non-Anginal Pain), ChestPainTypeTA (Typical Angina), RestingECGLVH (Left Ventricular Hypertrophy), RestingECGST (Abnormal ST segment), we find some odds ratios of interest. 
+
+To begin, all of our ChestPainType variables exhibit OR lower than, but not including 1. In individuals with atypical angina, the OR is 0.04. Using our reference group of those that do not experience chest pain symptoms while exercising, we subtract 1.00 - 0.04 = 0.96. Thus, we say that the odds of heart disease are 96% lower for those with atypical angina compared to those without angina pain symptoms (OR = 0.043; 95% CI: 0.026-0.069). We also see that ChestPainNAP, or individuals that experience non-anginal chest pain have an OR of 0.147. We subtract 1.00 - 0.147 = 0.853. Thus, we can say the odds of heart disease are 85% lower for those that experience non-anginal chest pain than those that do not experience symptoms of angina (OR = 0.147; 95% CI: 0.102-0.211). Lastly, ChestPainTA, or those that experience typical angina symptoms, we find an OR of 0.204. Once again, we subtract this as 1.00 - 0.204 = 0.796. Or, we can say that those that experience typical angina symptoms have a 80% lower chance of experience heart disease than those without symptoms (OR = 0.205; 95% CI: 0.108-0.381).
+
+Now we will conduct the same process for the RestingECG variables. First, RestingECGLVH, or those that experience left ventricular hypertrophy of the heart, had an OR of 1.06. However, since the confidence interval for this variable includes 1.00, we declare this as non significant. The odds of heart disease are not statistically different for those with left ventricular hypertrophy compared to those in the reference group of having a normal resting ECG (OR = 1.06; 95% CI: 0.719-1.573). Lastly, we look at our RestingECGST variable, or those that experience a S-T wave abnormality on their resting ECG. We find an OR of 1.607, and since the confidence interval does not include 1.00, we may examine further. Since the OR is above one and the confidence interval does not include 1.00, we may simply say those that experience S-T wave abnormalities had a 1.6 times higher likelihood of being diagnosed with heart disease than those that did not.
+
+The above findings show relationships that proc additional questions such as, why do individuals that experience chest pain symptoms appear to have lower chances of developing heart disease than those that are asymptomatic? We are also left with an interesting detail showing those that have S-T wave abnormalities have a much higher chance (1.6 times higher) of being positive for heart disease within our sample population. 
+
+To conclude our logistical regressional model test of our binary dependent variable, we will look into model fit, and check the assumptions of the model.
+
+### Computing and Interpreting Model Fit ###
+
+The logistical regression model created correctly predicted 396 out of 508 individuals that are positive for heart disease, and correctly predicted 302 out of 410 individuals that were negative for heart disease. Conclusively, the model was correct for 698 out of the total 918 individuals within our sample population. This yields a percentage of 76.03%, otherwise known as the count R^2 percent predicted correctly (Count R^2 = 0.7603). The model was better at classifying those with heart disease (sensitivity = 0.779), than those that do not have it (specificity = 0.737).
+
+### Checking Assumptions of the Logistic Regresssion Model ###
+
+# Assumption of Independence of Observations:
+
+This data was gathered by combining different data sets already available independently but never combined before. This data was collected from the following locations:
+
+Cleveland, OH: 303 observations
+Hungary: 294 observations
+Switzerland: 123 observations
+Long Beach, VA: 200 observations
+Stalog: 270 observations
+Total: 1190 observations
+
+With so many samples collected from very far distances away this seems promising towards independence.There were 272 observations duplicated, however, these duplications were removed. Thus, we can declare that the assumption of independence of observations has passed.
+
+# Assumption of Linearity:
+
+Next, we will look into linearity. This assumption assumes that the continuous predictor(s) and the outcome variable have a linear relationship. By plotting a scatter plot of the log-odds of predicted probabilities foor the outcome against each continuous prediction within the model. We will use log(), with a formula of fitted.values/(1-fitted.values) for probability, and ggplot, with a LOESS, and linear, curve to aid this.
+
+```{r}
+heart.logit <- log(x = heart.glm$fitted.values/(1-heart.glm$fitted.values))
+
+```
+
+```{r}
+heart.linearity <- data.frame(heart.logit, MaxHR = heart.glm.data$MaxHR)
+
+ggplot(heart.linearity, aes(x = MaxHR, y = heart.logit)) +
+  geom_point(size = 0.5, alpha = 0.5, color = 'grey') +
+  geom_smooth(se = FALSE, method = "loess") + 
+  geom_smooth(method = lm, se = FALSE, aes(color = 'linear')) +
+  theme_bw() +
+  labs(x = 'Heart Rate in BPM',
+       y = 'Log-Odds of Heart Disease Predicted Probability')
+```
+The graph shows the LOESS curve close to the linear fit line with exceptions:  < 110 bpm, 120-130 bpm, and slightly off again around 165 bpm. Overall, we can say that the assumption of linearity does pass, with some small abnormalities included.
+
+# Assumption of Imperfect Multi-Collinearity:
+
+The last assumption we need to ensure is that there is no perfect multicollinearity. For this, we will be applying a GVIF which is similar to a VIF, Variance Inflation Factor, except generalized. This will help us to examine how well each predictor variable in the model is explained by the group of other predictor variables. If a predictor variable is believed to be rooted in the presence of another, it will be ruled unnecessary. 
+
+The GVIF has a threshold of < 2.5, that is to say values of 2.5 or higher indicate that the multi-collinearity assumption has failed. We will use the car package and vif() to aid us.
+
+```{r}
+car :: vif(mod = heart.glm)
+```
+
+Since no values in the right-hand column show a value of 2.5 or greater, we can say that this assumption has passed, and that our variables of interest within the logistical regression model, ChestPainType and RestingECG, are not perfectly multi-collinear. Thus, we pass the assumption of imperfect multi-collinearity.
+
+### Conclusion ###
+
+A logistical regression model was applied to 3 variables of interest within a data set. These included independent variables ChestPainType and Resting ECG, and a binary dependent variable of HeartDisease. The goal of this model was to test whether our model is better at predicting heart disease, or just the same as our baseline. Our null hypothesis was listed as: A model containing chest pain type, and resting ECG information is no better than the baseline at explaining heart disease. Our alternative hypothesis was listed as: A model containing chest pain type, and resting ECG information is better than the baseline at explaining heart disease. We, also, wanted to examine the odds ratios (OR) of the given variables to examine likelihood of an individual, given attributes, had more, less, or the same chances of developing heart disease.
+
+We found that the null hypothesis was rejected for the alternative hypothesis that a model containing chest pain type, and resting ECG information is better than the baseline at explaining heart disease. This logistical regression model was statistically significantly better than the null model for predicting heart disease (X^2(5) = 291.5; p < .001). We also noticed the findings show relationships like those with S-T abnormalities, within the data set have 1.6 times higher chance of being positive for heart disease.
+
+Our model fit was also examined with the model being better at classifying those with heart disease with a sensitivity = 0.779, than those that do not have it, with a specificity = 0.737. Our percent predictly correctly within our model was 76%.
+
+Lastly, our logistical model passes all of the assumptions of logistical models, allowing more confidence in results.
